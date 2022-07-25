@@ -1,0 +1,372 @@
+---
+title: "Development Code"
+output: pdf_document
+---
+
+This file was used to create two data frames, 'by_match' and 'by_country', that were then primarily used in the data_analysis.Rmd file.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(StatsBombR)
+library(ggplot2)
+library(grid)
+library('writexl')
+library('readxl')
+library('xlsx')
+```
+
+# Reading data in
+```{r}
+Comp <- FreeCompetitions()
+Matches <- FreeMatches(Comp)
+Matches = Matches %>% filter(competition.competition_name=="UEFA Euro")
+data360 <- StatsBombFree360Events(MatchesDF = Matches, Parallel = T)
+
+events <- StatsBombFreeEvents(MatchesDF = Matches, Parallel = T)
+events <- allclean(events)
+events <- get.opposingteam(events)
+
+data360 = data360 %>% rename(id = event_uuid)
+
+events = events %>% left_join(data360, by = c("id" = "id"))
+
+events = events %>% rename(match_id = match_id.x) %>% select(-match_id.y)
+
+```
+
+# Making by team data  
+Creating function for each team
+```{r}
+new_row_country <- function(team_name){
+  
+  duels = events %>%
+  filter(team.name == toString(team_name), type.id == 4, duel.type.id != 10, freeze_frame != 'NULL') %>%
+  select(id, team.name, OpposingTeam, player.name, minute, second, location.x, location.y, freeze_frame, duel.outcome.id)
+
+
+num_dist = 5
+team_close_vect <- c()
+team_far_vect <- c()
+
+opp_close_vect <- c()
+opp_far_vect <- c()
+
+team_dist_vect <- c()
+opp_dist_vect <- c()
+
+diff_close_vect <- c()
+diff_far_vect <- c()
+
+for (n in 1:dim(duels)[1]) {
+  
+  duelone = duels[n,] %>% unnest(freeze_frame) %>%
+mutate(ff_location.x = (map(location, 1)), ff_location.y = (map(location, 2))) %>%
+select(-location) %>%
+mutate(ff_location.x = as.numeric(ifelse(ff_location.x == 'NULL', NA, ff_location.x)), ff_location.y = as.numeric(ifelse(ff_location.y == 'NULL', NA, ff_location.y))) 
+  
+  
+  # get one duel' actor and everyoneelse frames
+  actor = duelone %>%
+    filter(actor == TRUE)
+  
+  teammates = duelone %>%
+    filter(actor == FALSE, teammate == TRUE, keeper == FALSE)
+  
+  opp = duelone %>%
+    filter(actor == FALSE, teammate == FALSE, keeper == FALSE)
+
+  # get # of players who are far or near in 
+  team_far = 0
+  team_close = 0
+  for (i in 1:dim(teammates)[1]){
+    distance = sqrt((as.numeric(actor[1, 13])-as.numeric(teammates[i,13]))^2 + (as.numeric(actor[1, 14])-as.numeric(teammates[i,14]))^2)
+    
+    
+    if (is.na(distance)){distance <- 0}
+    team_dist_vect = append(team_dist_vect, distance)
+    
+    if (distance > num_dist){team_far = team_far + 1}
+    else if (distance > 0 && distance < num_dist) {team_close = team_close + 1}
+  }
+  
+  team_far_vect <- append(team_far_vect, team_far)
+  team_close_vect <- append(team_close_vect, team_close)
+  
+  opp_far = 0
+  opp_close = 0
+  for (i in 1:dim(opp)[1]){
+    distance = sqrt((as.numeric(actor[1, 13])-as.numeric(opp[i,13]))^2 + (as.numeric(actor[1, 14])-as.numeric(opp[i,14]))^2)
+    
+    
+    if (is.na(distance)){distance <- 0}
+    opp_dist_vect = append(opp_dist_vect, distance)
+    
+    if (distance > num_dist){opp_far = opp_far + 1}
+    else if (distance > 0 && distance < num_dist) {opp_close = opp_close + 1}
+  }
+  
+  opp_far_vect <- append(opp_far_vect, opp_far)
+  opp_close_vect <- append(opp_close_vect, opp_close)
+  
+  diff_far = team_far - opp_far
+  diff_close = team_close - opp_close
+  
+  diff_close_vect <- append(diff_close_vect, diff_close)
+  diff_far_vect <- append(diff_far_vect, diff_far)
+  
+}
+
+
+duels2 = duels 
+duels2['team_close'] <- team_close_vect
+duels2['team_far'] <- team_far_vect
+
+duels2['opp_close'] <- opp_close_vect
+duels2['opp_far'] <- opp_far_vect
+
+duels2['diff_close'] <- diff_close_vect
+duels2['diff_far'] <- diff_far_vect
+
+
+duels3 = duels2 %>% 
+  mutate(duel.outcome = ifelse(duel.outcome.id == 14 | duel.outcome.id == 13,"lost", "won"))
+
+duels_0_total = duels3 %>%
+  filter(diff_close == 0)
+duels_0_won = duels3 %>%
+  filter(diff_close == 0, duel.outcome == "won")
+
+duels_1_total = duels3 %>%
+  filter(diff_close == 1)
+duels_1_won = duels3 %>%
+  filter(diff_close == 1, duel.outcome == "won")
+
+duels_2_total = duels3 %>%
+  filter(diff_close == -1)
+duels_2_won = duels3 %>%
+  filter(diff_close == -1, duel.outcome == "won")
+
+duels_3_total = duels3 %>%
+  filter(diff_close == 2)
+duels_3_won = duels3 %>%
+  filter(diff_close == 2, duel.outcome == "won")
+
+duels_4_total = duels3 %>%
+  filter(diff_close == -2)
+duels_4_won = duels3 %>%
+  filter(diff_close == -2, duel.outcome == "won")
+
+
+
+min2 <- c(nrow(duels_4_won)/nrow(duels_4_total)) # -2
+
+plus2 <- c(nrow(duels_3_won)/nrow(duels_3_total)) # 2
+
+zero <- c(nrow(duels_0_won)/nrow(duels_0_total)) # 0
+
+plus1 <- c(nrow(duels_1_won)/nrow(duels_1_total)) # 1
+
+min1 <- c(nrow(duels_2_won)/nrow(duels_2_total)) # -1
+
+df <- data.frame(team_name, min2, min1, zero, plus1, plus2)
+
+return(df)}
+```
+
+Looping over every team name
+```{r}
+teams1 = events %>%
+  select(team.name)
+
+teams = unique(teams1)
+
+df_by_team <- data.frame(TeamName = character(), Down2 = double(), Down1 = double(), Equal = double(), Up1 = double(), Up2 = double(), stringsAsFactors=FALSE)
+
+
+for (i in 1:dim(teams)[1]) {
+  nameofteam = toString(teams[i,1]) 
+  arow = new_row_country(nameofteam)
+  df_by_team <- rbind(df_by_team, arow)}
+
+df_by_team
+```
+
+Joining other spreadsheet with team stats
+```{r}
+stats_by_country <- read.csv("extra_data_bycountry.csv")
+
+by_country = stats_by_country %>% right_join(df_by_team, by = c("team_name" = "team_name"))
+```
+
+
+
+# Making by match data
+Creating function for each match
+```{r}
+new_row_match <- function(match, team_name){
+  
+  duels = events %>%
+  filter(match_id == match, team.name == toString(team_name), type.id == 4, duel.type.id != 10, freeze_frame != 'NULL') %>%
+  select(id, team.name, OpposingTeam, player.name, minute, second, location.x, location.y, freeze_frame, duel.outcome.id, match_id)
+
+
+match = duels[1,11]
+
+num_dist = 5
+team_close_vect <- c()
+team_far_vect <- c()
+
+opp_close_vect <- c()
+opp_far_vect <- c()
+
+team_dist_vect <- c()
+opp_dist_vect <- c()
+
+diff_close_vect <- c()
+diff_far_vect <- c()
+
+for (n in 1:dim(duels)[1]) {
+  
+  duelone = duels[n,] %>% unnest(freeze_frame) %>%
+mutate(ff_location.x = (map(location, 1)), ff_location.y = (map(location, 2))) %>%
+select(-location) %>%
+mutate(ff_location.x = as.numeric(ifelse(ff_location.x == 'NULL', NA, ff_location.x)), ff_location.y = as.numeric(ifelse(ff_location.y == 'NULL', NA, ff_location.y))) 
+  
+  
+  # get one duel' actor and everyoneelse frames
+  actor = duelone %>%
+    filter(actor == TRUE)
+  
+  teammates = duelone %>%
+    filter(actor == FALSE, teammate == TRUE, keeper == FALSE)
+  
+  opp = duelone %>%
+    filter(actor == FALSE, teammate == FALSE, keeper == FALSE)
+
+  # get # of players who are far or near in 
+  team_far = 0
+  team_close = 0
+  for (i in 1:dim(teammates)[1]){
+    distance = sqrt((as.numeric(actor[1, 13])-as.numeric(teammates[i,13]))^2 + (as.numeric(actor[1, 14])-as.numeric(teammates[i,14]))^2)
+    
+    
+    if (is.na(distance)){distance <- 0}
+    team_dist_vect = append(team_dist_vect, distance)
+    
+    if (distance > num_dist){team_far = team_far + 1}
+    else if (distance > 0 && distance < num_dist) {team_close = team_close + 1}
+  }
+  
+  team_far_vect <- append(team_far_vect, team_far)
+  team_close_vect <- append(team_close_vect, team_close)
+  
+  opp_far = 0
+  opp_close = 0
+  for (i in 1:dim(opp)[1]){
+    distance = sqrt((as.numeric(actor[1, 13])-as.numeric(opp[i,13]))^2 + (as.numeric(actor[1, 14])-as.numeric(opp[i,14]))^2)
+    
+    
+    if (is.na(distance)){distance <- 0}
+    opp_dist_vect = append(opp_dist_vect, distance)
+    
+    if (distance > num_dist){opp_far = opp_far + 1}
+    else if (distance > 0 && distance < num_dist) {opp_close = opp_close + 1}
+  }
+  
+  opp_far_vect <- append(opp_far_vect, opp_far)
+  opp_close_vect <- append(opp_close_vect, opp_close)
+  
+  diff_far = team_far - opp_far
+  diff_close = team_close - opp_close
+  
+  diff_close_vect <- append(diff_close_vect, diff_close)
+  diff_far_vect <- append(diff_far_vect, diff_far)
+  
+}
+
+
+duels2 = duels 
+duels2['team_close'] <- team_close_vect
+duels2['team_far'] <- team_far_vect # num of players > 10 of actor
+# dist_vect
+
+duels2['opp_close'] <- opp_close_vect
+duels2['opp_far'] <- opp_far_vect
+
+duels2['diff_close'] <- diff_close_vect
+duels2['diff_far'] <- diff_far_vect
+
+
+duels3 = duels2 %>% 
+  mutate(duel.outcome = ifelse(duel.outcome.id == 14 | duel.outcome.id == 13,"lost", "won"))
+
+duels_0_total = duels3 %>%
+  filter(diff_close == 0)
+duels_0_won = duels3 %>%
+  filter(diff_close == 0, duel.outcome == "won")
+
+duels_1_total = duels3 %>%
+  filter(diff_close == 1)
+duels_1_won = duels3 %>%
+  filter(diff_close == 1, duel.outcome == "won")
+
+duels_2_total = duels3 %>%
+  filter(diff_close == -1)
+duels_2_won = duels3 %>%
+  filter(diff_close == -1, duel.outcome == "won")
+
+duels_3_total = duels3 %>%
+  filter(diff_close == 2)
+duels_3_won = duels3 %>%
+  filter(diff_close == 2, duel.outcome == "won")
+
+duels_4_total = duels3 %>%
+  filter(diff_close == -2)
+duels_4_won = duels3 %>%
+  filter(diff_close == -2, duel.outcome == "won")
+
+
+
+min2 <- c(nrow(duels_4_won)/nrow(duels_4_total)) # -2
+
+plus2 <- c(nrow(duels_3_won)/nrow(duels_3_total)) # 2
+
+zero <- c(nrow(duels_0_won)/nrow(duels_0_total)) # 0
+
+plus1 <- c(nrow(duels_1_won)/nrow(duels_1_total)) # 1
+
+min1 <- c(nrow(duels_2_won)/nrow(duels_2_total)) # -1
+
+df <- data.frame(match, team_name, min2, min1, zero, plus1, plus2)
+
+return(df)}
+```
+
+Looping over every match and team name combination
+```{r}
+all_matches1 = events %>%
+  select(match_id, team.name, OpposingTeam)
+
+all_matches = unique(all_matches1)
+
+df_by_match <- data.frame(MatchID = integer(), TeamName = character(), Down2 = double(), Down1 = double(), Equal = double(), Up1 = double(), Up2 = double(), stringsAsFactors=FALSE)
+
+x = all_matches
+
+for (i in 1:dim(x)[1]) {
+team = x[i, 'team.name']
+match = x[i, 'match_id']
+arow = new_row_match(as.integer(match), toString(team))
+df_by_match <- rbind(df_by_match, arow)
+}
+
+df_by_match
+```
+
+Joining other spreadsheet with match stats (created from Python file)
+```{r}
+match_stats = read.csv("bymatch_stats.csv")
+
+by_match <- merge(df_by_match, match_stats,by=c('match_id',"team_name"))
+```
