@@ -12,6 +12,7 @@ Repo Explanation:
 'data_analysis.RMD' and 'results.pdf' are the final presentable results and code. To run the Markdown files, the following libraries must be installed: tidyverse, StatsBombR, ggplot2. The paths to the 'by_country_maxmin' and 'by_match_maxmin' CSV files must also be filled out properly.
 
 Acknowledgements:
+
 The sources below were used for this project:
 
 * Link to GitHub: https://github.com/tvenen/WSD2022 
