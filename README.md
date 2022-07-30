@@ -4,6 +4,7 @@ Women in Sports Data Science 2022 competition project by Team Stat Sistahs
 In this repo is our project titled, "Turning 50-50s into an Advantage: Characterizing How Neaby Players Affect Duels." 
 
 Repo Explanation:
+
 'by_country_maxmin' and 'by_match_maxmin' are the CSV files that have all the data that was analyzed for results.
 
 'bymatch_stats.csv', 'development_code.RMD', 'Goal_stats.py', and 'extradata_by_country' are development files that were used to make the final spreadsheets. To run the 'development_code.RMD', the following libraries must be installed: tidyverse, StatsBombR, ggplot2, grid, writexl, readxl, xlsx. The 'Goal_stats.py' requires the pandas package. The paths to by_stats.csv and 'extradata_by_country' must be properly filled in for the code to run.
